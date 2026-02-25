@@ -46,3 +46,19 @@ secrets.yaml
 # Build
 bin/
 dist/
+
+# Coverage
+coverage.out
+coverage.html
+
+# Go binary
+app/paystream-auth-service
+
+# Helm (if used for Vault/ESO)
+charts/
+*.tgz
+
+# Discussion (supervisor review notes, not part of deliverable)
+discussion/
+
+.claude

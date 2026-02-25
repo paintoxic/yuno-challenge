@@ -78,6 +78,7 @@ bash setup.sh
 kubectl apply -f k8s/namespaces.yaml
 kubectl apply -f k8s/secrets/
 kubectl apply -f k8s/base/
+kubectl apply -f k8s/rollouts/
 kubectl apply -f k8s/networking/
 kubectl apply -f k8s/monitoring/
 
@@ -124,9 +125,10 @@ _See [DESIGN.md](DESIGN.md) for detailed technical decisions._
 
 1. `k8s/namespaces.yaml` — Namespaces with Istio ambient labels
 2. `k8s/secrets/` — Vault + External Secrets Operator
-3. `k8s/base/` — Rollout, Services, ConfigMap, RBAC
-4. `k8s/networking/` — Istio Gateway, VirtualService, DestinationRule
-5. `k8s/monitoring/` — Prometheus, Grafana, alerting rules
+3. `k8s/base/` — Rollout, Services, ConfigMap, RBAC, NetworkPolicy, PDB
+4. `k8s/rollouts/` — Argo Rollouts AnalysisTemplates
+5. `k8s/networking/` — Istio Gateway, VirtualService, DestinationRule
+6. `k8s/monitoring/` — Prometheus, Grafana, alerting rules
 
 ## CI/CD Pipeline
 

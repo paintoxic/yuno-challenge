@@ -1,0 +1,37 @@
+# =============================================================================
+# Istio DestinationRule - Auth Service Traffic Policy
+# =============================================================================
+# Configures connection pooling and outlier detection for the authorization
+# service. These policies improve resilience by:
+#
+# - Connection pooling: Limits the number of concurrent connections and
+#   requests to prevent overwhelming the service under load.
+# - Outlier detection: Ejects unhealthy endpoints from the load balancing
+#   pool when they return consecutive 5xx errors, allowing traffic to be
+#   routed only to healthy instances.
+# =============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: auth-service-dr
+  namespace: paystream
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/part-of: paystream
+    app.kubernetes.io/component: networking
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  host: auth-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        h2UpgradePolicy: DEFAULT
+        maxRequestsPerConnection: 10
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50

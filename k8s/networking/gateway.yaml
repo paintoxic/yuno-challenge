@@ -1,0 +1,84 @@
+# =============================================================================
+# Istio Gateway - PayStream Platform
+# =============================================================================
+# This Gateway resource defines the ingress entry point for the PayStream
+# authorization service. It accepts HTTP traffic on port 80 and is configured
+# with a placeholder HTTPS/TLS block for production use.
+#
+# NOTE ON ISTIO AMBIENT MESH:
+# In production with Istio Ambient Mesh, the recommended approach is to use
+# the Kubernetes Gateway API (gateway.networking.k8s.io/v1) instead of the
+# classic Istio Gateway resource. The Kubernetes Gateway API provides:
+#   - Native integration with ambient mode's ztunnel and waypoint proxies
+#   - Better separation of concerns between infra operators and app developers
+#   - A standardized, portable API across service mesh implementations
+#
+# Example of the Kubernetes Gateway API equivalent:
+#
+#   apiVersion: gateway.networking.k8s.io/v1
+#   kind: Gateway
+#   metadata:
+#     name: paystream-gateway
+#     namespace: paystream
+#     annotations:
+#       networking.istio.io/service-type: ClusterIP
+#   spec:
+#     gatewayClassName: istio
+#     listeners:
+#       - name: http
+#         protocol: HTTP
+#         port: 80
+#         allowedRoutes:
+#           namespaces:
+#             from: Same
+#       - name: https
+#         protocol: HTTPS
+#         port: 443
+#         tls:
+#           mode: Terminate
+#           certificateRefs:
+#             - name: paystream-tls
+#         allowedRoutes:
+#           namespaces:
+#             from: Same
+#
+# For local development with Minikube, we use the classic Istio Gateway below.
+# =============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: paystream-gateway
+  namespace: paystream
+  labels:
+    app.kubernetes.io/name: paystream-gateway
+    app.kubernetes.io/part-of: paystream
+    app.kubernetes.io/component: networking
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    # --- HTTP (development and production) ---
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "paystream.local"
+        - "*.paystream.local"
+
+    # --- HTTPS (production only) ---
+    # Uncomment the tls block below when deploying to production with a valid
+    # TLS certificate. The credentialName references a Kubernetes Secret
+    # containing the certificate and private key.
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        - "paystream.local"
+        - "*.paystream.local"
+      # tls:
+      #   mode: SIMPLE
+      #   credentialName: paystream-tls  # K8s Secret with TLS cert/key

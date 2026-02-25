@@ -1,0 +1,46 @@
+# =============================================================================
+# Istio VirtualService - Auth Service Routing
+# =============================================================================
+# Defines the traffic routing rules for the authorization service. This
+# VirtualService works in conjunction with Argo Rollouts to enable canary
+# deployments. Argo Rollouts dynamically adjusts the weight between the
+# stable and canary destinations during a progressive rollout.
+#
+# Initial state: 100% traffic to stable, 0% to canary.
+# During rollout: Argo Rollouts modifies weights automatically.
+# =============================================================================
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: auth-service-vs
+  namespace: paystream
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/part-of: paystream
+    app.kubernetes.io/component: networking
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  hosts:
+    - "auth-service"
+  gateways:
+    - paystream-gateway
+    - mesh  # Enables routing for intra-mesh (pod-to-pod) traffic
+  http:
+    - name: primary
+      timeout: 5s
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: "5xx,reset,connect-failure"
+      route:
+        - destination:
+            host: auth-service-stable
+            port:
+              number: 80
+          weight: 100
+        - destination:
+            host: auth-service-canary
+            port:
+              number: 80
+          weight: 0

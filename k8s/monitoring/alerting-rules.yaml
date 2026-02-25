@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alerting-rules
+  namespace: paystream
+  labels:
+    app: prometheus
+data:
+  auth-service-alerts.yaml: |
+    groups:
+      - name: auth-service-slos
+        rules:
+          - alert: AuthServiceHighLatency
+            expr: histogram_quantile(0.95, sum(rate(auth_request_duration_seconds_bucket[5m])) by (le, version)) > 2.5
+            for: 2m
+            labels:
+              severity: critical
+              service: auth-service
+            annotations:
+              summary: "P95 latency exceeds 2.5s SLO"
+              description: "auth-service version {{ $labels.version }} P95 latency is {{ $value }}s (SLO: < 2.5s)"
+
+          - alert: AuthServiceLowSuccessRate
+            expr: |
+              (sum(rate(auth_requests_total{status="approved"}[5m])) by (version))
+              /
+              (sum(rate(auth_requests_total[5m])) by (version)) < 0.90
+            for: 1m
+            labels:
+              severity: critical
+              service: auth-service
+            annotations:
+              summary: "Success rate below 90%"
+              description: "auth-service version {{ $labels.version }} success rate is {{ $value | humanizePercentage }}"
+
+          - alert: AuthServiceCircuitBreakerOpen
+            expr: circuit_breaker_state == 2
+            for: 30s
+            labels:
+              severity: warning
+              service: auth-service
+            annotations:
+              summary: "Circuit breaker is OPEN"
+              description: "Bank API circuit breaker has tripped, requests are being rejected"
+
+          - alert: CanaryDegradation
+            expr: |
+              (
+                histogram_quantile(0.95, sum(rate(auth_request_duration_seconds_bucket{version=~".*canary.*"}[5m])) by (le))
+                /
+                histogram_quantile(0.95, sum(rate(auth_request_duration_seconds_bucket{version!~".*canary.*"}[5m])) by (le))
+              ) > 1.5
+            for: 1m
+            labels:
+              severity: critical
+              service: auth-service
+            annotations:
+              summary: "Canary latency 50% worse than stable"
+              description: "Canary version is significantly slower than stable, consider rollback"

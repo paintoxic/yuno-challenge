@@ -1,0 +1,114 @@
+# CD Pipeline — Canary Deployment
+#
+# Cluster connectivity:
+# This pipeline requires a KUBECONFIG secret containing a base64-encoded
+# kubeconfig file that grants access to the target cluster.
+#
+# For Minikube local development, the kubeconfig can be obtained with:
+#   cat ~/.kube/config | base64 | pbcopy
+#
+# For production, use a dedicated service account with minimal RBAC:
+#   - Namespace: paystream, paystream-staging
+#   - Resources: rollouts, pods, services, endpoints
+#   - Verbs: get, list, watch, update, patch
+#
+# Triggers:
+# 1. Manual: workflow_dispatch with image_tag and environment inputs
+# 2. Automatic: after successful CI pipeline on master branch
+
+name: CD — Deploy Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (e.g., commit SHA)'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+  workflow_run:
+    workflows: ["CI — Build, Test, and Push"]
+    types: [completed]
+    branches: [master]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: paintoxic/paystream-auth-service
+
+jobs:
+  deploy:
+    name: Deploy Canary
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine namespace
+        id: ns
+        run: |
+          ENV="${{ github.event.inputs.environment || 'production' }}"
+          if [ "$ENV" = "staging" ]; then
+            echo "namespace=paystream-staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "namespace=paystream" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+
+      - name: Update image tag in rollout
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}"
+          NAMESPACE="${{ steps.ns.outputs.namespace }}"
+          kubectl argo rollouts set image auth-service \
+            auth-service="${IMAGE}" \
+            -n "${NAMESPACE}" || \
+          kubectl set image rollout/auth-service \
+            auth-service="${IMAGE}" \
+            -n "${NAMESPACE}"
+
+      - name: Monitor rollout status
+        run: |
+          NAMESPACE="${{ steps.ns.outputs.namespace }}"
+          echo "Watching rollout progress..."
+          kubectl argo rollouts status auth-service \
+            -n "${NAMESPACE}" \
+            --timeout 600s || true
+          echo ""
+          echo "Current rollout status:"
+          kubectl argo rollouts get rollout auth-service \
+            -n "${NAMESPACE}"
+
+      - name: Verify deployment health
+        run: |
+          NAMESPACE="${{ steps.ns.outputs.namespace }}"
+          echo "Checking pod health..."
+          kubectl get pods -n "${NAMESPACE}" -l app=auth-service
+          echo ""
+          echo "Checking service endpoints..."
+          kubectl get endpoints -n "${NAMESPACE}" auth-service

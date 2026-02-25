@@ -84,7 +84,8 @@ spec:
               - templateName: auth-service-health
             args:
               - name: canary-version
-                value: "{{templates.auth-service-health.args.canary-version}}"
+                valueFrom:
+                  podTemplateHashValue: Latest
         - pause: {duration: 2m}
         - setWeight: 50
         - analysis:
@@ -92,7 +93,8 @@ spec:
               - templateName: auth-service-success-rate
             args:
               - name: canary-version
-                value: "{{templates.auth-service-success-rate.args.canary-version}}"
+                valueFrom:
+                  podTemplateHashValue: Latest
         - pause: {duration: 2m}
         - setWeight: 100
       rollbackWindow:

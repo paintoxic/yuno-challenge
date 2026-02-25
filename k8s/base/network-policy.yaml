@@ -29,12 +29,12 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    # Allow Prometheus scraping
+    # Allow Prometheus scraping (AND: must be in paystream namespace AND labeled prometheus)
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: paystream
-        - podSelector:
+          podSelector:
             matchLabels:
               app: prometheus
       ports:

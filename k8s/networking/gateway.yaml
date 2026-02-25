@@ -69,16 +69,17 @@ spec:
         - "*.paystream.local"
 
     # --- HTTPS (production only) ---
-    # Uncomment the tls block below when deploying to production with a valid
-    # TLS certificate. The credentialName references a Kubernetes Secret
-    # containing the certificate and private key.
-    - port:
-        number: 443
-        name: https
-        protocol: HTTPS
-      hosts:
-        - "paystream.local"
-        - "*.paystream.local"
-      # tls:
-      #   mode: SIMPLE
-      #   credentialName: paystream-tls  # K8s Secret with TLS cert/key
+    # Uncomment the entire server block below when deploying to production
+    # with a valid TLS certificate. An HTTPS server without a tls block is
+    # invalid in Istio and will cause configuration rejection.
+    #
+    # - port:
+    #     number: 443
+    #     name: https
+    #     protocol: HTTPS
+    #   hosts:
+    #     - "paystream.local"
+    #     - "*.paystream.local"
+    #   tls:
+    #     mode: SIMPLE
+    #     credentialName: paystream-tls  # K8s Secret with TLS cert/key

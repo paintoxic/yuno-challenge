@@ -58,7 +58,5 @@ app/paystream-auth-service
 charts/
 *.tgz
 
-# Discussion (supervisor review notes, not part of deliverable)
-discussion/
 
 .claude

@@ -1,0 +1,16 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-pdb
+  namespace: paystream
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/part-of: paystream
+spec:
+  # Ensure at least 2 out of 3 replicas are always available
+  # during voluntary disruptions (node drain, rolling updates)
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: auth-service

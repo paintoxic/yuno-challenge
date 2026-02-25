@@ -1,0 +1,37 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: auth-service-role
+  namespace: paystream
+  labels:
+    app: auth-service
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/part-of: paystream
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+    resourceNames: ["auth-service-secrets"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: auth-service-rolebinding
+  namespace: paystream
+  labels:
+    app: auth-service
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/part-of: paystream
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: auth-service-role
+subjects:
+  - kind: ServiceAccount
+    name: auth-service
+    namespace: paystream

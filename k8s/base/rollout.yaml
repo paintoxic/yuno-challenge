@@ -1,0 +1,78 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: auth-service
+  namespace: paystream
+  labels:
+    app: auth-service
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/part-of: paystream
+    app.kubernetes.io/managed-by: argo-rollouts
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        version: "1.0.0"
+        app.kubernetes.io/name: auth-service
+        app.kubernetes.io/component: authorization
+        app.kubernetes.io/part-of: paystream
+    spec:
+      serviceAccountName: auth-service
+      containers:
+        - name: auth-service
+          image: paintoxic/paystream-auth-service:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: auth-service-config
+          env:
+            - name: BANK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-secrets
+                  key: BANK_API_KEY
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-secrets
+                  key: DB_PASSWORD
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-secrets
+                  key: ENCRYPTION_KEY
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+  strategy:
+    canary:
+      canaryService: auth-service-canary
+      stableService: auth-service-stable
+      steps:
+        - setWeight: 10
+        - pause: {duration: 2m}
+        - setWeight: 50
+        - pause: {duration: 2m}

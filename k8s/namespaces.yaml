@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: paystream
+  labels:
+    istio.io/dataplane-mode: ambient
+    app.kubernetes.io/part-of: paystream
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: paystream-staging
+  labels:
+    istio.io/dataplane-mode: ambient
+    app.kubernetes.io/part-of: paystream

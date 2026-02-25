@@ -8,9 +8,10 @@ metadata:
     app.kubernetes.io/component: authorization
     app.kubernetes.io/part-of: paystream
 spec:
-  # Ensure at least 2 out of 3 replicas are always available
-  # during voluntary disruptions (node drain, rolling updates)
-  minAvailable: 2
+  # Allow at most 1 replica to be unavailable during voluntary disruptions.
+  # Preferred over minAvailable during canary rollouts where replica count
+  # varies between stable and canary ReplicaSets.
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: auth-service

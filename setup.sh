@@ -351,12 +351,18 @@ start_minikube() {
 install_istio_ambient() {
     info "Checking Istio installation..."
 
+    # Verify ambient mode specifically by checking for ztunnel DaemonSet
+    if kubectl get daemonset ztunnel -n istio-system &>/dev/null; then
+        success "Istio Ambient Mesh is already installed (ztunnel DaemonSet found)"
+        return
+    fi
+
     if kubectl get namespace istio-system &>/dev/null; then
         local istio_pods
         istio_pods="$(kubectl get pods -n istio-system --no-headers 2>/dev/null | wc -l | tr -d ' ')"
         if [[ "${istio_pods}" -gt 0 ]]; then
-            success "Istio is already installed (${istio_pods} pods in istio-system)"
-            return
+            warn "Istio is installed but NOT in ambient mode. Reinstalling with ambient profile..."
+            istioctl uninstall --purge -y 2>/dev/null
         fi
     fi
 
@@ -364,7 +370,9 @@ install_istio_ambient() {
     istioctl install --set profile=ambient -y
 
     info "Waiting for Istio pods to be ready..."
-    kubectl wait --for=condition=Ready pods --all -n istio-system --timeout=300s || true
+    if ! kubectl wait --for=condition=Ready pods --all -n istio-system --timeout=300s; then
+        error_exit "Istio pods failed to become ready within 300 seconds"
+    fi
 
     success "Istio Ambient Mesh installed successfully"
 }
@@ -388,7 +396,9 @@ install_argo_rollouts() {
     kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
 
     info "Waiting for Argo Rollouts pods to be ready..."
-    kubectl wait --for=condition=Ready pods --all -n argo-rollouts --timeout=180s || true
+    if ! kubectl wait --for=condition=Ready pods --all -n argo-rollouts --timeout=180s; then
+        error_exit "Argo Rollouts pods failed to become ready within 180 seconds"
+    fi
 
     success "Argo Rollouts installed successfully"
 }
@@ -408,12 +418,21 @@ install_external_secrets_operator() {
     info "Creating external-secrets namespace..."
     kubectl create namespace external-secrets 2>/dev/null || true
 
-    info "Installing External Secrets Operator..."
-    kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/main/deploy/crds/bundle.yaml 2>/dev/null || true
-    kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/main/deploy/manifests/external-secrets.yaml 2>/dev/null || true
+    info "Installing External Secrets Operator (v0.10.7)..."
+    local ESO_VERSION="v0.10.7"
+    if ! kubectl apply -f "https://raw.githubusercontent.com/external-secrets/external-secrets/${ESO_VERSION}/deploy/crds/bundle.yaml"; then
+        warn "Failed to apply ESO CRDs. Continuing — ESO is optional for local development."
+        return
+    fi
+    if ! kubectl apply -f "https://raw.githubusercontent.com/external-secrets/external-secrets/${ESO_VERSION}/deploy/manifests/external-secrets.yaml"; then
+        warn "Failed to apply ESO manifests. Continuing — ESO is optional for local development."
+        return
+    fi
 
     info "Waiting for External Secrets Operator pods to be ready..."
-    kubectl wait --for=condition=Ready pods --all -n external-secrets --timeout=180s || true
+    if ! kubectl wait --for=condition=Ready pods --all -n external-secrets --timeout=180s; then
+        warn "External Secrets Operator pods did not become ready within 180 seconds"
+    fi
 
     success "External Secrets Operator installed successfully"
 }
@@ -494,6 +513,8 @@ show_summary() {
     echo -e "  terragrunt      : $(terragrunt --version 2>/dev/null | head -1 || echo 'not found')"
     echo -e "  gh              : $(gh --version 2>/dev/null | head -1 || echo 'not found')"
     echo -e "  jq              : $(jq --version 2>/dev/null || echo 'not found')"
+    echo -e "  curl            : $(curl --version 2>/dev/null | head -1 || echo 'not found')"
+    echo -e "  git             : $(git --version 2>/dev/null || echo 'not found')"
     echo -e "  kubeconform     : $(kubeconform -v 2>/dev/null || echo 'not found')"
     echo ""
     echo -e "${BLUE}Cluster status:${NC}"
@@ -523,12 +544,24 @@ main() {
     detect_os
     echo ""
 
-    # Step 2: Install required tools
+    # Step 2: Pre-flight checks
+    if [[ "${OS}" == "macos" ]] && ! check_command brew; then
+        error_exit "Homebrew is required on macOS but not installed. Install it from https://brew.sh"
+    fi
+
+    # Step 3: Install required tools
     info "--- Installing required tools ---"
     echo ""
     install_basic_tools
     echo ""
     install_docker
+    echo ""
+
+    # Verify Docker daemon is running before proceeding
+    if ! docker info &>/dev/null; then
+        error_exit "Docker daemon is not running. Start Docker Desktop first, then re-run this script."
+    fi
+    success "Docker daemon is running"
     echo ""
     install_minikube
     echo ""

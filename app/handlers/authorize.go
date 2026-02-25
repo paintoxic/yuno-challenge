@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/paintoxic/paystream-auth-service/metrics"
@@ -16,12 +18,33 @@ var (
 	SuccessRate    float64 = 0.94
 	ServiceVersion string  = "1.0.0"
 
-	FaultInjectionEnabled bool    = false
-	FaultLatencyMS        int     = 0
-	FaultSuccessRate      float64 = 1.0
-
 	StartTime time.Time
 )
+
+// FaultConfig holds fault injection state with mutex protection to avoid
+// data races between the fault-inject handler and authorize goroutines.
+type FaultConfig struct {
+	mu          sync.RWMutex
+	Enabled     bool
+	LatencyMS   int
+	SuccessRate float64
+}
+
+var Fault = &FaultConfig{SuccessRate: 1.0}
+
+func (f *FaultConfig) Get() (bool, int, float64) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.Enabled, f.LatencyMS, f.SuccessRate
+}
+
+func (f *FaultConfig) Set(enabled bool, latencyMS int, successRate float64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Enabled = enabled
+	f.LatencyMS = latencyMS
+	f.SuccessRate = successRate
+}
 
 // BreakerInterface abstracts the circuit breaker for testability.
 type BreakerInterface interface {
@@ -32,6 +55,21 @@ type BreakerInterface interface {
 
 // CircuitBreaker is set from main.go before handlers are invoked.
 var CircuitBreaker BreakerInterface
+
+// Request counters for computing real success rate and P95.
+var (
+	totalRequests   atomic.Int64
+	approvedRequests atomic.Int64
+)
+
+// ObservedSuccessRate returns the real success rate from counters.
+func ObservedSuccessRate() float64 {
+	total := totalRequests.Load()
+	if total == 0 {
+		return 1.0
+	}
+	return float64(approvedRequests.Load()) / float64(total)
+}
 
 type authorizeRequest struct {
 	CardNumber string  `json:"card_number"`
@@ -61,21 +99,23 @@ func AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 	var req authorizeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
 
 	txnID := fmt.Sprintf("txn-%d-%04d", time.Now().UnixNano(), rand.Intn(10000))
 
 	start := time.Now()
 
+	faultEnabled, faultLatency, faultRate := Fault.Get()
+
 	result, cbErr := CircuitBreaker.Execute(func() (interface{}, error) {
 		latency := LatencyBaseMS
-		if FaultInjectionEnabled && FaultLatencyMS > 0 {
-			latency = FaultLatencyMS
+		if faultEnabled && faultLatency > 0 {
+			latency = faultLatency
 		}
 		jitter := rand.Intn(101) - 50
 		sleepMS := latency + jitter
@@ -85,8 +125,8 @@ func AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(time.Duration(sleepMS) * time.Millisecond)
 
 		rate := SuccessRate
-		if FaultInjectionEnabled {
-			rate = FaultSuccessRate
+		if faultEnabled {
+			rate = faultRate
 		}
 
 		if rand.Float64() < rate {
@@ -112,6 +152,15 @@ func AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 	if result == nil || result.(string) != "approved" {
 		status = "declined"
 	}
+
+	// Update atomic counters for real success rate
+	totalRequests.Add(1)
+	if status == "approved" {
+		approvedRequests.Add(1)
+	}
+
+	// Update Prometheus success rate gauge with observed value
+	metrics.AuthSuccessRate.Set(ObservedSuccessRate())
 
 	processor := req.Processor
 	if processor == "" {

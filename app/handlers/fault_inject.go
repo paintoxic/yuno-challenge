@@ -27,21 +27,21 @@ func FaultInjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 	var req faultInjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	FaultInjectionEnabled = req.Enabled
-	FaultLatencyMS = req.LatencyMS
-	FaultSuccessRate = req.SuccessRate
+	Fault.Set(req.Enabled, req.LatencyMS, req.SuccessRate)
 
+	enabled, latencyMS, successRate := Fault.Get()
 	resp := faultInjectResponse{
 		FaultInjection: faultInjectConfig{
-			Enabled:     FaultInjectionEnabled,
-			LatencyMS:   FaultLatencyMS,
-			SuccessRate: FaultSuccessRate,
+			Enabled:     enabled,
+			LatencyMS:   latencyMS,
+			SuccessRate: successRate,
 		},
 	}
 

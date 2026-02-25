@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: auth-service-health
+  namespace: paystream
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: analysis
+    app.kubernetes.io/part-of: paystream
+spec:
+  metrics:
+    - name: p95-latency
+      interval: 30s
+      count: 5
+      failureLimit: 2
+      successCondition: "result[0] < 2.5"
+      provider:
+        prometheus:
+          address: http://prometheus.paystream.svc.cluster.local:9090
+          query: |
+            histogram_quantile(0.95,
+              sum(rate(auth_request_duration_seconds_bucket{
+                version="{{args.canary-version}}"
+              }[2m])) by (le)
+            )
+    - name: error-rate
+      interval: 30s
+      count: 5
+      failureLimit: 2
+      successCondition: "result[0] < 0.01"
+      provider:
+        prometheus:
+          address: http://prometheus.paystream.svc.cluster.local:9090
+          query: |
+            1 - (
+              sum(rate(auth_requests_total{
+                version="{{args.canary-version}}",
+                status="approved"
+              }[2m]))
+              /
+              sum(rate(auth_requests_total{
+                version="{{args.canary-version}}"
+              }[2m]))
+            )
+  args:
+    - name: canary-version

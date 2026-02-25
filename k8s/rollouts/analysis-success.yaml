@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: auth-service-success-rate
+  namespace: paystream
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: analysis
+    app.kubernetes.io/part-of: paystream
+spec:
+  metrics:
+    - name: success-rate
+      interval: 30s
+      count: 5
+      failureLimit: 1
+      successCondition: "result[0] > 0.80"
+      provider:
+        prometheus:
+          address: http://prometheus.paystream.svc.cluster.local:9090
+          query: |
+            sum(rate(auth_requests_total{
+              version="{{args.canary-version}}",
+              status="approved"
+            }[2m]))
+            /
+            sum(rate(auth_requests_total{
+              version="{{args.canary-version}}"
+            }[2m]))
+    - name: circuit-breaker-healthy
+      interval: 30s
+      count: 5
+      failureLimit: 2
+      successCondition: "result[0] < 1"
+      provider:
+        prometheus:
+          address: http://prometheus.paystream.svc.cluster.local:9090
+          query: |
+            circuit_breaker_state
+  args:
+    - name: canary-version

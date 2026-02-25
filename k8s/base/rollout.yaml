@@ -71,8 +71,29 @@ spec:
     canary:
       canaryService: auth-service-canary
       stableService: auth-service-stable
+      trafficRouting:
+        istio:
+          virtualServices:
+            - name: auth-service-vs
+              routes:
+                - primary
       steps:
         - setWeight: 10
+        - analysis:
+            templates:
+              - templateName: auth-service-health
+            args:
+              - name: canary-version
+                value: "{{templates.auth-service-health.args.canary-version}}"
         - pause: {duration: 2m}
         - setWeight: 50
+        - analysis:
+            templates:
+              - templateName: auth-service-success-rate
+            args:
+              - name: canary-version
+                value: "{{templates.auth-service-success-rate.args.canary-version}}"
         - pause: {duration: 2m}
+        - setWeight: 100
+      rollbackWindow:
+        revisions: 2
